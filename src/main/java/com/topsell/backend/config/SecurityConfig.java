@@ -34,9 +34,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Permitir preflight CORS
                         .requestMatchers("/api/auth/**").permitAll() // Login y registro sin autenticación
+                        .requestMatchers("/api/upload/**").permitAll() // Permitir subida de imágenes
                         .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/categories/**", "/api/brands/**", "/api/banners/**").permitAll()
                         .requestMatchers("/api/contacts/**").permitAll() // Permitir contacto público
-                        .requestMatchers("/api/upload/image").permitAll()
                         .requestMatchers("/api/users/admin/**").hasAuthority("ADMIN") // Solo administradores
                         .requestMatchers("/api/quotes/admin/**").hasAuthority("ADMIN") // Solo administradores
                         .anyRequest().authenticated()
