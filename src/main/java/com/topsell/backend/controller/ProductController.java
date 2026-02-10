@@ -5,6 +5,7 @@ import com.topsell.backend.entity.ProductImage;
 import com.topsell.backend.repository.CategoryRepository;
 import com.topsell.backend.repository.ProductRepository;
 import com.topsell.backend.repository.ProductImageRepository;
+import com.topsell.backend.service.CloudinaryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +24,9 @@ public class ProductController {
 
     @Autowired
     private ProductImageRepository productImageRepository;
+
+    @Autowired
+    private CloudinaryService cloudinaryService;
 
     // ========== ENDPOINTS PÚBLICOS (TIENDA) ==========
     
@@ -88,6 +92,44 @@ public class ProductController {
     public ResponseEntity<Product> updateProduct(@PathVariable Long id, @RequestBody Product productDetails) {
         return productRepository.findById(id)
                 .map(product -> {
+                    try {
+                        // Si la URL de la imagen principal cambió, eliminar la anterior de Cloudinary
+                        if (productDetails.getImageUrl() != null && 
+                            !productDetails.getImageUrl().equals(product.getImageUrl()) &&
+                            product.getImageUrl() != null && !product.getImageUrl().isEmpty()) {
+                            cloudinaryService.deleteImage(product.getImageUrl());
+                        }
+                        
+                        // Manejar imágenes secundarias
+                        if (productDetails.getImages() != null) {
+                            // Obtener URLs de las imágenes actuales
+                            List<String> oldImageUrls = product.getImages().stream()
+                                .map(ProductImage::getImageUrl)
+                                .toList();
+                            
+                            // Obtener URLs de las nuevas imágenes
+                            List<String> newImageUrls = productDetails.getImages().stream()
+                                .map(ProductImage::getImageUrl)
+                                .toList();
+                            
+                            // Eliminar de Cloudinary las imágenes que ya no están
+                            for (String oldUrl : oldImageUrls) {
+                                if (oldUrl != null && !oldUrl.isEmpty() && !newImageUrls.contains(oldUrl)) {
+                                    cloudinaryService.deleteImage(oldUrl);
+                                }
+                            }
+                            
+                            // Limpiar y actualizar imágenes existentes
+                            product.getImages().clear();
+                            for (ProductImage image : productDetails.getImages()) {
+                                image.setProduct(product);
+                                product.getImages().add(image);
+                            }
+                        }
+                    } catch (Exception e) {
+                        // Continuar aunque falle la eliminación de Cloudinary
+                    }
+                    
                     product.setName(productDetails.getName());
                     product.setSlug(productDetails.getSlug());
                     product.setShortDescription(productDetails.getShortDescription());
@@ -102,18 +144,6 @@ public class ProductController {
                     product.setFeatured(productDetails.isFeatured());
                     product.setActive(productDetails.isActive());
                     
-                    // Actualizar imágenes secundarias
-                    if (productDetails.getImages() != null) {
-                        // Limpiar imágenes existentes
-                        product.getImages().clear();
-                        
-                        // Agregar nuevas imágenes
-                        for (ProductImage image : productDetails.getImages()) {
-                            image.setProduct(product);
-                            product.getImages().add(image);
-                        }
-                    }
-                    
                     return ResponseEntity.ok(productRepository.save(product));
                 })
                 .orElse(ResponseEntity.notFound().build());
@@ -123,8 +153,28 @@ public class ProductController {
     public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
         return productRepository.findById(id)
                 .map(product -> {
-                    productRepository.delete(product);
-                    return ResponseEntity.ok().build();
+                    try {
+                        // Eliminar imagen principal de Cloudinary
+                        if (product.getImageUrl() != null && !product.getImageUrl().isEmpty()) {
+                            cloudinaryService.deleteImage(product.getImageUrl());
+                        }
+                        
+                        // Eliminar imágenes secundarias de Cloudinary
+                        if (product.getImages() != null) {
+                            for (ProductImage image : product.getImages()) {
+                                if (image.getImageUrl() != null && !image.getImageUrl().isEmpty()) {
+                                    cloudinaryService.deleteImage(image.getImageUrl());
+                                }
+                            }
+                        }
+                        
+                        // Ahora eliminar el producto de la base de datos
+                        productRepository.delete(product);
+                        return ResponseEntity.ok().build();
+                    } catch (Exception e) {
+                        return ResponseEntity.status(500)
+                                .body("Error al eliminar producto: " + e.getMessage());
+                    }
                 })
                 .orElse(ResponseEntity.notFound().build());
     }

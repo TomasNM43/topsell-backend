@@ -2,6 +2,7 @@ package com.topsell.backend.controller;
 
 import com.topsell.backend.entity.Banner;
 import com.topsell.backend.repository.BannerRepository;
+import com.topsell.backend.service.CloudinaryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,9 @@ public class BannerController {
 
     @Autowired
     private BannerRepository bannerRepository;
+
+    @Autowired
+    private CloudinaryService cloudinaryService;
 
     // ========== ENDPOINTS PÚBLICOS (TIENDA) ==========
     
@@ -46,6 +50,17 @@ public class BannerController {
     public ResponseEntity<Banner> updateBanner(@PathVariable Long id, @RequestBody Banner bannerDetails) {
         return bannerRepository.findById(id)
                 .map(banner -> {
+                    try {
+                        // Si la URL de la imagen cambió, eliminar la anterior de Cloudinary
+                        if (bannerDetails.getImageUrl() != null && 
+                            !bannerDetails.getImageUrl().equals(banner.getImageUrl()) &&
+                            banner.getImageUrl() != null && !banner.getImageUrl().isEmpty()) {
+                            cloudinaryService.deleteImage(banner.getImageUrl());
+                        }
+                    } catch (Exception e) {
+                        // Continuar aunque falle la eliminación de Cloudinary
+                    }
+                    
                     banner.setImageUrl(bannerDetails.getImageUrl());
                     banner.setTitle(bannerDetails.getTitle());
                     banner.setActive(bannerDetails.getActive());
@@ -59,8 +74,19 @@ public class BannerController {
     public ResponseEntity<?> deleteBanner(@PathVariable Long id) {
         return bannerRepository.findById(id)
                 .map(banner -> {
-                    bannerRepository.delete(banner);
-                    return ResponseEntity.ok().build();
+                    try {
+                        // Eliminar imagen de Cloudinary
+                        if (banner.getImageUrl() != null && !banner.getImageUrl().isEmpty()) {
+                            cloudinaryService.deleteImage(banner.getImageUrl());
+                        }
+                        
+                        // Eliminar el banner de la base de datos
+                        bannerRepository.delete(banner);
+                        return ResponseEntity.ok().build();
+                    } catch (Exception e) {
+                        return ResponseEntity.status(500)
+                                .body("Error al eliminar banner: " + e.getMessage());
+                    }
                 })
                 .orElse(ResponseEntity.notFound().build());
     }

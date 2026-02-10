@@ -5,6 +5,7 @@ import com.topsell.backend.entity.Category;
 import com.topsell.backend.entity.SubCategory;
 import com.topsell.backend.repository.CategoryRepository;
 import com.topsell.backend.repository.SubCategoryRepository;
+import com.topsell.backend.service.CloudinaryService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,9 @@ public class CategoryController {
 
     @Autowired
     private SubCategoryRepository subCategoryRepository;
+
+    @Autowired
+    private CloudinaryService cloudinaryService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -76,6 +80,17 @@ public class CategoryController {
     public ResponseEntity<Category> updateCategory(@PathVariable Long id, @RequestBody Category categoryDetails) {
         return categoryRepository.findById(id)
                 .map(category -> {
+                    try {
+                        // Si la URL de la imagen cambió, eliminar la anterior de Cloudinary
+                        if (categoryDetails.getImage() != null && 
+                            !categoryDetails.getImage().equals(category.getImage()) &&
+                            category.getImage() != null && !category.getImage().isEmpty()) {
+                            cloudinaryService.deleteImage(category.getImage());
+                        }
+                    } catch (Exception e) {
+                        // Continuar aunque falle la eliminación de Cloudinary
+                    }
+                    
                     category.setName(categoryDetails.getName());
                     category.setSlug(categoryDetails.getSlug());
                     category.setDescription(categoryDetails.getDescription());
@@ -137,8 +152,19 @@ public class CategoryController {
     public ResponseEntity<?> deleteCategory(@PathVariable Long id) {
         return categoryRepository.findById(id)
                 .map(category -> {
-                    categoryRepository.delete(category);
-                    return ResponseEntity.ok().build();
+                    try {
+                        // Eliminar imagen de Cloudinary
+                        if (category.getImage() != null && !category.getImage().isEmpty()) {
+                            cloudinaryService.deleteImage(category.getImage());
+                        }
+                        
+                        // Eliminar la categoría de la base de datos
+                        categoryRepository.delete(category);
+                        return ResponseEntity.ok().build();
+                    } catch (Exception e) {
+                        return ResponseEntity.status(500)
+                                .body("Error al eliminar categoría: " + e.getMessage());
+                    }
                 })
                 .orElse(ResponseEntity.notFound().build());
     }

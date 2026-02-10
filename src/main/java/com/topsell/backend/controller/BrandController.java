@@ -2,6 +2,7 @@ package com.topsell.backend.controller;
 
 import com.topsell.backend.entity.Brand;
 import com.topsell.backend.repository.BrandRepository;
+import com.topsell.backend.service.CloudinaryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,9 @@ public class BrandController {
 
     @Autowired
     private BrandRepository brandRepository;
+
+    @Autowired
+    private CloudinaryService cloudinaryService;
 
     // ========== ENDPOINTS PÚBLICOS (TIENDA) ==========
     
@@ -45,6 +49,17 @@ public class BrandController {
     public ResponseEntity<Brand> updateBrand(@PathVariable Long id, @RequestBody Brand brandDetails) {
         return brandRepository.findById(id)
                 .map(brand -> {
+                    try {
+                        // Si la URL del logo cambió, eliminar el anterior de Cloudinary
+                        if (brandDetails.getLogoUrl() != null && 
+                            !brandDetails.getLogoUrl().equals(brand.getLogoUrl()) &&
+                            brand.getLogoUrl() != null && !brand.getLogoUrl().isEmpty()) {
+                            cloudinaryService.deleteImage(brand.getLogoUrl());
+                        }
+                    } catch (Exception e) {
+                        // Continuar aunque falle la eliminación de Cloudinary
+                    }
+                    
                     brand.setName(brandDetails.getName());
                     brand.setLogoUrl(brandDetails.getLogoUrl());
                     return ResponseEntity.ok(brandRepository.save(brand));
@@ -56,8 +71,19 @@ public class BrandController {
     public ResponseEntity<?> deleteBrand(@PathVariable Long id) {
         return brandRepository.findById(id)
                 .map(brand -> {
-                    brandRepository.delete(brand);
-                    return ResponseEntity.ok().build();
+                    try {
+                        // Eliminar logo de Cloudinary
+                        if (brand.getLogoUrl() != null && !brand.getLogoUrl().isEmpty()) {
+                            cloudinaryService.deleteImage(brand.getLogoUrl());
+                        }
+                        
+                        // Eliminar la marca de la base de datos
+                        brandRepository.delete(brand);
+                        return ResponseEntity.ok().build();
+                    } catch (Exception e) {
+                        return ResponseEntity.status(500)
+                                .body("Error al eliminar marca: " + e.getMessage());
+                    }
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
